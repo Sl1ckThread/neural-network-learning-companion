@@ -27,9 +27,11 @@
     .label { font-weight:900; color:var(--accent); text-transform:uppercase; font-size:.72rem; letter-spacing:.08em; } .question { margin:.35rem 0 .8rem; font-weight:700; }
     .options { display:grid; gap:8px; } .option { text-align:left; background:#11243a; border:1px solid #294963; color:var(--text); padding:10px 11px; border-radius:10px; } .option:hover { border-color:var(--accent2); } .option.correct { border-color:var(--accent); background:#174637; } .option.wrong { border-color:var(--danger); background:#421d29; }
     .answer-row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; } .feedback { min-height:1.45em; margin:12px 0 0; color:var(--muted); font-size:.9rem; } .feedback.good { color:#9af4cb; } .feedback.bad { color:#ffadba; } details { margin-top:13px; border-left:3px solid #366a90; padding-left:10px; color:#c9daef; font-size:.9rem; } summary { cursor:pointer; color:#a9cdf7; font-weight:700; }
+    .rehearsal { margin-top:16px; padding:14px; border-radius:12px; border:1px solid #285574; background:#0b2134; } .rehearsal p { margin:.35rem 0; } textarea { width:100%; min-height:100px; margin-top:9px; padding:10px; border-radius:10px; border:1px solid #315775; background:#071522; color:var(--text); resize:vertical; font:inherit; } .ready-badge { color:#a5f4cf; font-weight:800; font-size:.82rem; }
     .empty { grid-column:1/-1; text-align:center; color:var(--muted); padding:50px; }
     .review { max-width:780px; margin:0 auto 50px; padding:20px; border:1px solid var(--border); border-radius:18px; background:var(--panel); box-shadow:var(--shadow); } .review h2 { font-size:1.3rem; } .review-card { min-height:270px; border-radius:14px; padding:20px; background:#091522; border:1px solid #24425f; } .review-answer { display:none; margin-top:18px; padding:14px; background:#123052; border-radius:10px; } .review-answer.open { display:block; }
     .roadmap { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-bottom:50px; } .roadmap article { background:var(--panel); border:1px solid var(--border); padding:17px; border-radius:16px; } .roadmap h2 { color:var(--accent); } .roadmap p { color:var(--muted); font-size:.93rem; }
+    .present-card { max-width:820px; margin:0 auto 50px; padding:22px; border:1px solid var(--border); border-radius:18px; background:var(--panel); box-shadow:var(--shadow); } .present-card h2 { font-size:1.3rem; } .present-script { margin-top:16px; padding:18px; border-radius:13px; border:1px solid #2b5577; background:#091a2a; } .present-script ol { padding-left:20px; color:#d6e6fa; } .truth { color:#ffcf8d; font-size:.9rem; }
     .hidden { display:none!important; } footer { border-top:1px solid var(--border); padding:25px 0 45px; color:var(--muted); font-size:.88rem; }
     @media(max-width:620px){ header{padding-top:30px}.dashboard{grid-template-columns:1fr}.stats{text-align:left}.toolbar{grid-template-columns:1fr}.video-grid{grid-template-columns:1fr}.card-actions{align-items:flex-start;flex-direction:column} }
   </style>
@@ -44,13 +46,14 @@
 
     <section class="dashboard" aria-label="Learning progress">
       <div><strong id="progressText">0 of 23 videos completed</strong><div class="progressbar"><div id="progressFill"></div></div><span id="progressHint" class="meta">Start with Video 1. Do not try to finish everything today.</span></div>
-      <div class="stats"><strong id="scoreText">0 / 0</strong><span class="meta">quiz answers correct</span></div>
+      <div class="stats"><strong id="scoreText">0 / 0</strong><span class="meta">quiz answers correct</span><strong id="readyText">0 / 23</strong><span class="meta">self-reported presentation-ready</span></div>
     </section>
 
     <nav class="tabs" aria-label="Site sections">
       <button class="tab active" data-view="learn">Learn by video</button>
       <button class="tab" data-view="review">Random review</button>
       <button class="tab" data-view="roadmap">How to use this</button>
+      <button class="tab" data-view="present">Present it</button>
     </nav>
 
     <section id="learnView">
@@ -72,6 +75,16 @@
         <article><h2>2. Answer first</h2><p>Return here and press <b>Study question</b>. Choose an answer before revealing the hint or explanation.</p></article>
         <article><h2>3. Mark it done</h2><p>When you can explain the idea in your own simple words, mark the lesson complete. The dashboard saves automatically.</p></article>
         <article><h2>4. Review tomorrow</h2><p>Use Random review for 5 minutes. Wrong answers are useful: revisit only the linked video, not the whole playlist.</p></article>
+      </div>
+    </section>
+
+    <section id="presentView" class="hidden">
+      <div class="present-card">
+        <h2>Presentation rehearsal, not another quiz</h2>
+        <p class="truth"><b>Honest rule:</b> a correct multiple-choice answer proves recognition, not that you can teach it. Only mark a topic presentation-ready after you explain it aloud without reading.</p>
+        <p class="meta">This gives a fixed speaking structure. You do not need to invent questions or make a full slide deck first.</p>
+        <div id="presentScript" class="present-script"></div>
+        <div class="answer-row"><button id="newPresentation" class="btn primary">Give me a rehearsal topic</button><a id="openPresentationVideo" class="btn secondary">Open its video</a><button id="markPresentationReady" class="btn secondary">I explained it aloud</button></div>
       </div>
     </section>
   </main>
@@ -105,23 +118,28 @@ const videos = [
 ];
 const $ = s => document.querySelector(s);
 const storageKey='nn-learning-lab-v1';
-let state={done:[],attempts:0,correct:0};
-try { const saved=JSON.parse(localStorage.getItem(storageKey)); if(saved && Array.isArray(saved.done)) state={...state,...saved}; } catch(e) { localStorage.removeItem(storageKey); }
+let state={done:[],attempts:0,correct:0,ready:[]};
+try { const saved=JSON.parse(localStorage.getItem(storageKey)); if(saved && Array.isArray(saved.done)) state={...state,...saved,ready:Array.isArray(saved.ready)?saved.ready:[]}; } catch(e) { localStorage.removeItem(storageKey); }
 let reviewIndex=0;
 function save(){ localStorage.setItem(storageKey,JSON.stringify(state)); updateDashboard(); }
 function esc(t){return t.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function updateDashboard(){ const done=state.done.length, pct=Math.round(done/videos.length*100); $('#progressText').textContent=`${done} of ${videos.length} videos completed`; $('#progressFill').style.width=pct+'%'; $('#progressHint').textContent=done===videos.length?'Playlist complete. Keep using Random review to retain it.':done?'Good. Next: complete one more card, then stop or review.':'Start with Video 1. Do not try to finish everything today.'; $('#scoreText').textContent=`${state.correct} / ${state.attempts}`; }
+function updateDashboard(){ const done=state.done.length, pct=Math.round(done/videos.length*100); $('#progressText').textContent=`${done} of ${videos.length} videos completed`; $('#progressFill').style.width=pct+'%'; $('#progressHint').textContent=done===videos.length?'Playlist complete. Keep using Random review to retain it.':done?'Good. Next: complete one more card, then stop or review.':'Start with Video 1. Do not try to finish everything today.'; $('#scoreText').textContent=`${state.correct} / ${state.attempts}`; $('#readyText').textContent=`${state.ready.length} / ${videos.length}`; }
 function card(v){ const done=state.done.includes(v.n); return `<article class="card ${done?'done':''}" data-n="${v.n}"><div class="card-top"><div class="number">${v.n}</div><div><h2>${esc(v.title)}</h2><div class="meta">${v.dur} · ${done?'Completed':'Not completed'}</div></div></div><p class="concept">${esc(v.concept)}</p><div class="card-actions"><a class="btn secondary small-btn" target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=${v.id}&list=PLVHz9YUo4rReIulRIe-ActR3AIYeiy8Tl&index=${v.n}">Open video ↗</a><div><button class="btn small-btn study-toggle">Study question</button> <button class="btn ${done?'secondary':'primary'} small-btn done-toggle">${done?'Undo done':'Mark done'}</button></div></div><div class="study-panel"><div class="label">After watching: answer before checking</div><p class="question">${esc(v.q)}</p><div class="options">${v.opts.map((o,i)=>`<button class="option" data-choice="${i}">${String.fromCharCode(65+i)}. ${esc(o)}</button>`).join('')}</div><p class="feedback" aria-live="polite"></p><div class="answer-row"><button class="btn secondary small-btn hint-btn">Show hint</button><button class="btn secondary small-btn reveal-btn">Reveal explanation</button></div><details class="hint"><summary>Hint</summary><p>${esc(v.hint)}</p></details><details class="explanation"><summary>Explanation</summary><p>${esc(v.ex)}</p></details></div></article>`; }
 function renderLearn(){const term=$('#search').value.trim().toLowerCase(); const filtered=videos.filter(v=>(v.title+' '+v.concept).toLowerCase().includes(term)); $('#videoGrid').innerHTML=filtered.length?filtered.map(card).join(''):'<p class="empty">No matching lesson. Try “CNN”, “gradient”, “optimizer”, or “RNN”.</p>';}
 function toggleDone(n){state.done=state.done.includes(n)?state.done.filter(x=>x!==n):[...state.done,n].sort((a,b)=>a-b);save();renderLearn();}
+function toggleReady(n){state.ready=state.ready.includes(n)?state.ready.filter(x=>x!==n):[...state.ready,n].sort((a,b)=>a-b);save();renderPresentation();}
 $('#videoGrid').addEventListener('click',e=>{const cardEl=e.target.closest('.card');if(!cardEl)return;const n=Number(cardEl.dataset.n),v=videos.find(x=>x.n===n);if(e.target.closest('.study-toggle'))cardEl.querySelector('.study-panel').classList.toggle('open');if(e.target.closest('.done-toggle'))toggleDone(n);if(e.target.closest('.hint-btn'))cardEl.querySelector('.hint').open=true;if(e.target.closest('.reveal-btn'))cardEl.querySelector('.explanation').open=true;if(e.target.matches('.option')){const choice=Number(e.target.dataset.choice), panel=cardEl.querySelector('.study-panel'), feedback=panel.querySelector('.feedback');panel.querySelectorAll('.option').forEach(b=>b.disabled=true);panel.querySelector(`[data-choice="${v.a}"]`).classList.add('correct');state.attempts++;if(choice===v.a){state.correct++;feedback.textContent='Correct. Read the explanation once, then try saying it in your own words.';feedback.className='feedback good';}else{e.target.classList.add('wrong');feedback.textContent='Not quite. The correct option is highlighted. Read why, then continue.';feedback.className='feedback bad';}save();}});
 $('#search').addEventListener('input',renderLearn);
-$('#resetProgress').addEventListener('click',()=>{if(confirm('Reset all completion and quiz statistics for this site?')){state={done:[],attempts:0,correct:0};save();renderLearn();}});
-document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');['learn','review','roadmap'].forEach(v=>$('#'+v+'View').classList.toggle('hidden',v!==b.dataset.view));if(b.dataset.view==='review')renderReview();}));
+$('#resetProgress').addEventListener('click',()=>{if(confirm('Reset all completion, quiz, and presentation-ready statistics for this site?')){state={done:[],attempts:0,correct:0,ready:[]};save();renderLearn();renderPresentation();}});
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');['learn','review','roadmap','present'].forEach(v=>$('#'+v+'View').classList.toggle('hidden',v!==b.dataset.view));if(b.dataset.view==='review')renderReview();if(b.dataset.view==='present')renderPresentation();}));
 function renderReview(){let v=videos[reviewIndex];$('#reviewCard').innerHTML=`<div class="label">Video ${v.n}: ${esc(v.title)}</div><p class="question">${esc(v.q)}</p><p class="meta">Before showing the answer, say your answer aloud or type it in your own notes. Then compare.</p><div id="reviewAnswer" class="review-answer"><b>Answer:</b> ${esc(v.opts[v.a])}<br><br>${esc(v.ex)}</div>`;}
 $('#showReviewAnswer').addEventListener('click',()=>$('#reviewAnswer').classList.add('open'));
 $('#nextReview').addEventListener('click',()=>{let next;do{next=Math.floor(Math.random()*videos.length)}while(videos.length>1&&next===reviewIndex);reviewIndex=next;renderReview();});
-renderLearn(); updateDashboard(); renderReview();
+let presentationIndex=0;
+function renderPresentation(){const v=videos[presentationIndex];$('#presentScript').innerHTML=`<div class="label">Video ${v.n}: ${esc(v.title)}</div><h3>${esc(v.title)}</h3><p><b>Goal:</b> ${esc(v.concept)}</p><ol><li><b>Define it</b> in one ordinary-language sentence.</li><li><b>State why the problem exists.</b> What fails or becomes difficult without it?</li><li><b>Explain the mechanism.</b> Use the key idea from this video.</li><li><b>Give one consequence.</b> Use an example, limitation, or application.</li></ol><p class="meta">Do this without reading. If you freeze, revisit the video and try later. A structured 60-second explanation is stronger evidence than one correct MCQ.</p>`;const open=$('#openPresentationVideo');open.href=`https://www.youtube.com/watch?v=${v.id}&list=PLVHz9YUo4rReIulRIe-ActR3AIYeiy8Tl&index=${v.n}`;open.target='_blank';open.rel='noopener';$('#markPresentationReady').textContent=state.ready.includes(v.n)?'Undo presentation-ready':'I explained it aloud';}
+$('#newPresentation').addEventListener('click',()=>{const candidates=videos.filter(v=>!state.ready.includes(v.n));const pool=candidates.length?candidates:videos;let next;do{next=pool[Math.floor(Math.random()*pool.length)].n-1}while(pool.length>1&&next===presentationIndex);presentationIndex=next;renderPresentation();});
+$('#markPresentationReady').addEventListener('click',()=>toggleReady(videos[presentationIndex].n));
+renderLearn(); updateDashboard(); renderReview(); renderPresentation();
 </script>
 </body>
 </html>
